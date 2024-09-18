@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Stream with Audio</title>
+</head>
+
+<body>
+    <h1>Live Stream with Audio</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+    <img id="video-stream" width="640" height="480" alt="Stream will appear here..." />
+    <audio id="audio-stream" controls autoplay></audio>
+
+    <button id="start-stream">Start Live Stream</button>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const imgElement = document.getElementById('video-stream');
+        const audioElement = document.getElementById('audio-stream');
+        const startStreamButton = document.getElementById('start-stream');
+
+        // Add a click event listener to the button to start the live stream
+        startStreamButton.addEventListener('click', () => {
+            // Access the webcam and microphone stream
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then((stream) => {
+                    video.srcObject = stream;
+
+                    // Capture video frames and send them to the server
+                    setInterval(() => {
+                        // Draw the current video frame onto the canvas
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                        // Convert the canvas image to base64
+                        const frame = canvas.toDataURL('image/jpeg');
+
+                        // Send the frame to the server
+                        socket.emit('video-stream', frame);
+                    }, 100); // Capture frame every 100ms
+
+                    // Send audio stream to server
+                    const audioTracks = stream.getAudioTracks();
+                    if (audioTracks.length > 0) {
+                        const audioTrack = audioTracks[0];
+                        const audioContext = new AudioContext();
+                        const mediaStreamSource = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
+                        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                        mediaStreamSource.connect(processor);
+                        processor.connect(audioContext.destination);
+
+                        processor.onaudioprocess = (event) => {
+                            const audioData = event.inputBuffer.getChannelData(0);
+                            socket.emit('audio-stream', audioData);
+                        };
+                    }
+                })
+                .catch((err) => {
+                    console.error('Error accessing webcam and microphone:', err);
+                });
+        });
+
+        // Receive video frames from the server
+        socket.on('video-stream', (frame) => {
+            imgElement.src = frame;
+        });
+
+        // Receive audio data from the server
+        socket.on('audio-stream', (audioData) => {
+            const audioBuffer = new Float32Array(audioData);
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioContext.decodeAudioData(audioBuffer.buffer, (buffer) => {
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+            });
+        });
+    </script>
+</body>
+
+</html>

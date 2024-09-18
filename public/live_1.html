@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Stream</title>
+</head>
+
+<body>
+    <h1>Live Stream</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+    <img id="video-stream" width="640" height="480" alt="Stream will appear here..." />
+
+    <button id="start-stream">Start Live Stream</button>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const imgElement = document.getElementById('video-stream');
+        const startStreamButton = document.getElementById('start-stream');
+
+        // Add a click event listener to the button to start the live stream
+        startStreamButton.addEventListener('click', () => {
+            // Access the webcam stream
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then((stream) => {
+                    video.srcObject = stream;
+
+                    // Capture video frames and send them to the server
+                    setInterval(() => {
+                        // Draw the current video frame onto the canvas
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                        // Convert the canvas image to base64
+                        const frame = canvas.toDataURL('image/jpeg');
+
+                        // Send the frame to the server
+                        socket.emit('video-stream', frame);
+                    }, 100); // Capture frame every 100ms
+                })
+                .catch((err) => {
+                    console.error('Error accessing webcam:', err);
+                });
+        });
+
+        // Receive video frames from the server
+        socket.on('video-stream', (frame) => {
+            imgElement.src = frame;
+        });
+    </script>
+</body>
+
+</html>
